@@ -1,0 +1,4 @@
+.vagrant/
+.vscode/
+.venv/
+id_rsa*

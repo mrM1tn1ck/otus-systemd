@@ -1,0 +1,92 @@
+---
+- name: OTUS lesson | SYSTEMD
+  hosts: systemd
+  become: true
+
+  tasks:
+    - name: Custom unit
+      block:
+        - name: Installing watchlog
+          ansible.builtin.template:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+          with_items:
+            - { src: templates/watchlog, dest: /etc/default/watchlog, mode: "0644" }
+            - { src: templates/watchlog.sh, dest: /opt/watchlog.sh, mode: "a+x" }
+            - { src: templates/watchlog.service, dest: /etc/systemd/system/watchlog.service, mode: "0644" }
+            - { src: templates/watchlog.timer, dest: /etc/systemd/system/watchlog.timer, mode: "0644" }
+
+        - name: Start watchlog.timer
+          become: true
+          ansible.builtin.systemd_service:
+            name: watchlog.timer
+            state: started
+            enabled: true
+
+    - name: Installing spawn-fcgi
+      block:
+        - name: Installing fcgi and requirements
+          ansible.builtin.apt:
+            pkg:
+              - spawn-fcgi
+              - php
+              - php-cgi
+              - php-cli
+              - apache2
+              - libapache2-mod-fcgid
+            state: present
+            update_cache: true
+
+        - name: Create conf dir if it not exists
+          ansible.builtin.file:
+            path: /etc/spawn-fcgi/
+            state: directory
+            mode: "0644"
+
+        - name: Copying files
+          ansible.builtin.template:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+          with_items:
+            - { src: templates/fcgi.conf, dest: /etc/spawn-fcgi/fcgi.conf, mode: "0644" }
+            - { src: templates/spawn-fcgi.service, dest: /etc/systemd/system/spawn-fcgi.service, mode: "0644" }
+
+        - name: Start spawn-fcgi.service
+          ansible.builtin.systemd_service:
+            name: spawn-fcgi.service
+            state: started
+            enabled: true
+
+    - name: Installing multiple Nginx instances
+      block:
+        - name: Collect facts about system services
+          ansible.builtin.service_facts:
+
+        - name: Debug
+          ansible.builtin.debug:
+            var: ansible_facts.services
+
+        - name: Installing Nginx
+          ansible.builtin.apt:
+            name: nginx
+            state: present
+
+        - name: Copying files
+          ansible.builtin.template:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+          with_items:
+            - { src: templates/nginx@.service, dest: /etc/systemd/system/nginx@.service, mode: "0644" }
+            - { src: templates/nginx-first.conf, dest: /etc/nginx/nginx-first.conf, mode: "0644" }
+            - { src: templates/nginx-second.conf, dest: /etc/nginx/nginx-second.conf, mode: "0644" }
+
+        - name: Starting nginx instances
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: started
+          with_items:
+            - nginx@first
+            - nginx@second
